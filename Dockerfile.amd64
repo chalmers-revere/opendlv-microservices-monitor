@@ -27,4 +27,4 @@ WORKDIR /opt/sources
 
 RUN make
 
-ENTRYPOINT ["/opt/sources/docker-performance-monitor.py"]
+ENTRYPOINT ["/opt/sources/microservices-monitor.py"]
