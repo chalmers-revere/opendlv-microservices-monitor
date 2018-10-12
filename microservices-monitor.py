@@ -30,16 +30,28 @@ import docker
 import time
 import datetime
 
-def main(argv):
+def exception_handling(verbose):
+    if verbose:
+        traceback.print_exc()
+        sys.exc_clear()
 
-    cid=253
+def main(argv):
+    # Default CID if not provided via command line options
+    cid=111
     verbose=False
     debug=False
     try:
         opts, args = getopt.getopt(argv,"vd",["cid=","verbose","debug"])
     except getopt.GetoptError, err:
-        #traceback.print_exc()
         print err.msg
+        print "Usage: microservices-monitor.py [--cid=<X>] [-v, --verbose] [-d, --debug]"
+        print "Options:"
+        print "\t--cid=<X>\tSpecify the CID to which publish data. Default 111."
+        print "\t-v, --verbose\tDisplay info in console."
+        print "\t-d, --debug\tDisplay info and docker API result in console."
+        return 1
+
+    # Parsing options
     for opt, arg in opts:
         if opt in ("--cid"):
             cid = arg
@@ -48,21 +60,17 @@ def main(argv):
         elif opt in ("-d","--debug"):
             verbose = True
             debug = True
-        else:
-            print "Unrecognized option\n"
     
     if verbose:
-        print "\n--- Performance Monitor ---\n"
+        print "\n--- Microservices Monitor ---\n"
 
     # Create a session to send and receive messages from a running OD4Session;
     session = OD4Session.OD4Session(int(cid))
     # Connect to the network session.
     session.connect()
 
-    # Create a docker client from environmental variables. Alternatively it is possible to instantiate a DockerClient object
+    # Create a docker client from environmental variables
     dockerClient = docker.from_env()
-
-            #{u'blkio_stats': {u'io_service_time_recursive': [], u'sectors_recursive': [], u'io_service_bytes_recursive': [], u'io_serviced_recursive': [], u'io_time_recursive': [], u'io_queue_recursive': [], u'io_merged_recursive': [], u'io_wait_time_recursive': []}, u'precpu_stats': {u'cpu_usage': {u'usage_in_usermode': 150000000, u'total_usage': 198315991, u'percpu_usage': [6633313, 156385904, 28161932, 7134842], u'usage_in_kernelmode': 40000000}, u'system_cpu_usage': 6733590000000, u'online_cpus': 4, u'throttling_data': {u'throttled_time': 0, u'periods': 0, u'throttled_periods': 0}}, u'name': u'/jovial_heisenberg', u'read': u'2018-08-30T06:21:12.333305582Z', u'storage_stats': {}, u'num_procs': 0, u'preread': u'2018-08-30T06:21:11.33100547Z', u'memory_stats': {u'usage': 22163456, u'limit': 16724475904, u'stats': {u'unevictable': 0, u'total_inactive_file': 69632, u'total_rss_huge': 0, u'hierarchical_memsw_limit': 0, u'total_cache': 69632, u'total_mapped_file': 0, u'mapped_file': 0, u'pgfault': 9261, u'total_writeback': 0, u'hierarchical_memory_limit': 9223372036854771712, u'total_active_file': 0, u'rss_huge': 0, u'cache': 69632, u'active_anon': 19009536, u'pgmajfault': 0, u'total_pgpgout': 2850, u'writeback': 0, u'pgpgout': 2850, u'total_active_anon': 19009536, u'total_unevictable': 0, u'total_pgfault': 9261, u'total_pgmajfault': 0, u'total_inactive_anon': 0, u'inactive_file': 69632, u'pgpgin': 7508, u'total_dirty': 69632, u'total_pgpgin': 7508, u'rss': 19009536, u'active_file': 0, u'inactive_anon': 0, u'dirty': 69632, u'total_rss': 19009536}, u'max_usage': 22597632}, u'pids_stats': {u'current': 3}, u'id': u'f6c85268d339334e52ec54162cc38aaadf92f17a8d122e33d2d902f68d7a1272', u'cpu_stats': {u'cpu_usage': {u'usage_in_usermode': 150000000, u'total_usage': 198342463, u'percpu_usage': [6659785, 156385904, 28161932, 7134842], u'usage_in_kernelmode': 40000000}, u'system_cpu_usage': 6737570000000, u'online_cpus': 4, u'throttling_data': {u'throttled_time': 0, u'periods': 0, u'throttled_periods': 0}}}
 
     ################################################################################
 
@@ -70,62 +78,73 @@ def main(argv):
         timeBegin = time.time()
         if verbose:
             print "\n["+datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S')+"]"
-        
-        microserviceStats = opendlv_messages.opendlv_system_MicroserviceStatistics()
 
-        containersList = dockerClient.containers.list(all=True)
+        microserviceStats = opendlv_messages.opendlv_system_MicroserviceStatistics()
+        critical_fail = False
+
+        try:
+            containersList = dockerClient.containers.list(all=True)
+        except Exception:
+            exception_handling(verbose)
+            print "Failure to retrieve containers from docker client!"
+            critical_fail = True
+            break
 
         for container in containersList:
             containerName = '{{0: <{}}}'.format(25).format(container.name) + " ["+container.id[0:12]+"] "
-
             try:
                 stats = container.stats(stream=False)
+            except Exception:
+                exception_handling(verbose)
+                print "Failure to retrieve statistics from containers!"
+                critical_fail = True
+                break
 
-                if debug:
-                    print stats
+            if debug:
+                print stats
 
+            prev_total_usage = 0
+            prev_system_cpu_usage = 0
+            total_usage = 0
+            system_cpu_usage = 0
+            num_cores = 0
+            try:
                 # Get previous cpu usage
                 prev_total_usage = float(stats['precpu_stats']['cpu_usage']['total_usage'])
                 prev_system_cpu_usage = float(stats['precpu_stats']['system_cpu_usage'])
-
                 # Get current cpu usage
                 total_usage = float(stats['cpu_stats']['cpu_usage']['total_usage'])
                 system_cpu_usage = float(stats['cpu_stats']['system_cpu_usage'])
-
                 # Get number of cores
                 num_cores = int(stats['cpu_stats']['online_cpus'])
+            except Exception:
+                exception_handling(verbose)
 
+            VIRT = 0
+            mem_limit = 0
+            RES = 0
+            try:
+                # Get memory usage
                 VIRT = int(stats['memory_stats']['usage'])
+                # Get memory usage limit
                 mem_limit = int(stats['memory_stats']['limit'])
+                # Get resident set size
                 RES = int(stats['memory_stats']['stats']['rss'])
-
-            except KeyError, e:
-                print "*******************************************"
-                print "KeyError exception on key "+str(e)+" while probing container "+containerName
-                print "-------------------------------------------"
-                print "Traceback: "
-                traceback.print_exc()
-                sys.exc_clear()
-                print "*******************************************"
-                continue
-            except Exception, e:
-                print "*******************************************"
-                print "Exception: "+str(e)+" while probing container "+containerName
-                print "-------------------------------------------"
-                print "Traceback: "
-                traceback.print_exc()
-                sys.exc_clear()
-                print "*******************************************"
-                continue
+            except Exception:
+                exception_handling(verbose)
 
             # Compute container cpu usage delta
             cpuDelta = total_usage - prev_total_usage
             # Compute system cpu usage delta
             sysDelta = system_cpu_usage - prev_system_cpu_usage
+            # Initialization of percentage variables
             cpuPercent = 0.0
+            memPercent = 0.0
+            # Division by 0 checks
             if sysDelta > 0.0 and cpuDelta > 0.0 :
                 cpuPercent = (cpuDelta / sysDelta) * 100.0
-            memPercent = (float(VIRT) / mem_limit) * 100.0
+            if mem_limit > 0.0 :
+                memPercent = (float(VIRT) / mem_limit) * 100.0
 
             # Prepare OD4 session data structures
             microserviceStats.name = container.name
@@ -149,8 +168,15 @@ def main(argv):
 
             session.send(1105, microserviceStats.SerializeToString());
 
+        if critical_fail:
+            break
+
         if verbose:
             print "CID: "+str(cid)+" Elapsed time: "+str('%.2f'%(time.time()-timeBegin))+"s"
+
+    if critical_fail:
+        print "Critical failure, exiting..."
+        return 1
 
         ############################################################################
 
