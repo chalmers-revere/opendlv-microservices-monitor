@@ -33,21 +33,32 @@ import datetime
 def main(argv):
 
     cid=253
+    verbose=False
+    debug=False
     try:
-        opts, args = getopt.getopt(argv,"",["cid="])
-    except getopt.GetoptError:
-        None
+        opts, args = getopt.getopt(argv,"vd",["cid=","verbose","debug"])
+    except getopt.GetoptError, err:
+        #traceback.print_exc()
+        print err.msg
     for opt, arg in opts:
         if opt in ("--cid"):
             cid = arg
+        elif opt in ("-v","--verbose"):
+            verbose=True 
+        elif opt in ("-d","--debug"):
+            verbose = True
+            debug = True
+        else:
+            print "Unrecognized option\n"
+    
+    if verbose:
+        print "\n--- Performance Monitor ---\n"
 
-    print "\n--- Performance Monitor ---\n"
     # Create a session to send and receive messages from a running OD4Session;
     session = OD4Session.OD4Session(int(cid))
     # Connect to the network session.
     session.connect()
 
-    print "Create a docker client\n"
     # Create a docker client from environmental variables. Alternatively it is possible to instantiate a DockerClient object
     dockerClient = docker.from_env()
 
@@ -57,7 +68,8 @@ def main(argv):
 
     while True:
         timeBegin = time.time()
-        print "\n["+datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S')+"]"
+        if verbose:
+            print "\n["+datetime.datetime.fromtimestamp(time.time()).strftime('%H:%M:%S')+"]"
         
         microserviceStats = opendlv_messages.opendlv_system_MicroserviceStatistics()
 
@@ -68,6 +80,9 @@ def main(argv):
 
             try:
                 stats = container.stats(stream=False)
+
+                if debug:
+                    print stats
 
                 # Get previous cpu usage
                 prev_total_usage = float(stats['precpu_stats']['cpu_usage']['total_usage'])
@@ -121,19 +136,21 @@ def main(argv):
             microserviceStats.RES = RES
             microserviceStats.MEM = memPercent
 
-            print "*******************************************"
-            print "** MS name:    : " + microserviceStats.name
-            print "** MS ID:      : " + microserviceStats.identifier
-            print "** MS cores (#): " + str(microserviceStats.cores)
-            print "** MS CPU   (%): " + str('%.3f'%(microserviceStats.CPU))
-            print "** MS VIRT  (B): " + str(microserviceStats.VIRT)
-            print "** MS RES   (B): " + str(microserviceStats.RES)
-            print "** MS MEM   (%): " + str('%.3f'%(microserviceStats.MEM))
-            print "*******************************************"
+            if verbose:
+                print "*******************************************"
+                print "** MS name:    : " + microserviceStats.name
+                print "** MS ID:      : " + microserviceStats.identifier
+                print "** MS cores (#): " + str(microserviceStats.cores)
+                print "** MS CPU   (%): " + str('%.3f'%(microserviceStats.CPU))
+                print "** MS VIRT  (B): " + str(microserviceStats.VIRT)
+                print "** MS RES   (B): " + str(microserviceStats.RES)
+                print "** MS MEM   (%): " + str('%.3f'%(microserviceStats.MEM))
+                print "*******************************************"
 
             session.send(1105, microserviceStats.SerializeToString());
 
-        print "CID: "+str(cid)+" Elapsed time: "+str('%.2f'%(time.time()-timeBegin))+"s"
+        if verbose:
+            print "CID: "+str(cid)+" Elapsed time: "+str('%.2f'%(time.time()-timeBegin))+"s"
 
         ############################################################################
 
