@@ -21,7 +21,7 @@
 # OD4Session is needed to send and receive messages
 import OD4Session
 # Import the OpenDLV Standard Message Set.
-import opendlv_standard_message_set_v0_9_7_pb2 as opendlv_messages
+import opendlv_standard_message_set_v0_9_8_pb2 as opendlv_messages
 
 import sys
 import getopt
