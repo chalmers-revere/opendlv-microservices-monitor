@@ -1,10 +1,20 @@
-# opendlv-microservices-monitor
+# OpenDLV Microservices Monitor
 
 Microservice to oversee the resource consumption of other docker microservices running on the platform. 
 
 It publishes to a [OpenDaVINCI](https://github.com/se-research/OpenDaVINCI)/[libcluon](https://github.com/chrberger/libcluon) conference information on containers' CPU usage in percentage value, memory usage in bytes (total memory and Resident Set Size), memory usage in percentage value with respect to the total memory available to the microservice, and the number of CPU cores available. 
 
 The data is contained in the [opendlv message](https://github.com/chalmers-revere/opendlv.standard-message-set) `opendlv.system.MicroserviceStatistics`.
+
+[![Build Status](https://travis-ci.org/chalmers-revere/opendlv-microservices-monitor.svg?branch=master)](https://travis-ci.org/chalmers-revere/opendlv-microservices-monitor) [![License: GPLv3](https://img.shields.io/badge/license-GPL--3-blue.svg
+)](https://www.gnu.org/licenses/gpl-3.0.txt)
+
+---
+
+## Table of Contents
+* [Dependencies](#dependencies)
+* [Usage](#usage)
+* [License](#license)
 
 ---
 ## Dependencies
